@@ -1,69 +1,186 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.io import wavfile
+from scipy.signal import butter, filtfilt, resample_poly
+import sounddevice as sd
 
-# Define parameters
-frequencies = [5, 10, 15, 20, 25]  # Frequencies of the harmonics in Hz
-amplitudes = [16, 8, 4, 2, 1]      # Amplitudes of the harmonics
-sampling_rate = 100                # Sampling rate in samples per second
 
-# Time vector: 1 second of signal
-t = np.linspace(0, 1, sampling_rate, endpoint=False)
+###########################-PART-1-###############################
 
-# Initialize the signal
-signal = np.zeros(t.size)
+# Load the audio file
+path_to_file = './test_audio.wav'
+fs_audio, audio = wavfile.read(path_to_file)
 
-#######################
-#### Your code here ###
+# Display audio sampling rate
+print('Audio sampling rate (Hz):', fs_audio)
 
-### x(t) == summation( A[:] * sin(2*pi*freq[:]*t) ) ###
-# Compute the signal by summing up the harmonics
-for i in range(len(frequencies)):
-    signal += amplitudes[i] * np.sin(2 * np.pi * frequencies[i] * t)
+# Uncomment the following two lines to playback the audio signal
+# sd.play(audio.astype(np.float32), int(fs_audio))
+# sd.wait() # Wait until the audio is finished playingn  
 
-### X(f) == FFT Transform of x(t)
-# Frequency domain
-spectrum = np.fft.fft(signal)
-frequencies = np.fft.fftfreq(t.size, d=1/sampling_rate)
-spectrum = np.fft.fftshift(spectrum)
-frequencies = np.fft.fftshift(frequencies)
+# Time vector for plotting
+t_audio = np.linspace(0, len(audio)/fs_audio, num=len(audio))
 
-#######################
+# FFT of the audio signal
+audio_fft = np.fft.fft(audio)
+freq_audio = np.fft.fftfreq(len(audio), d=1/fs_audio)
 
-# Plot the results
-plt.figure(figsize=(10, 6))
-
-# Time domain
-plt.subplot(2, 1, 1)
-plt.plot(t, signal)
-plt.title('Time Domain')
-plt.xlabel('Time [s]')
+# Plotting time domain and frequency domain
+plt.figure(figsize=(12, 6))
+plt.subplot(211)
+plt.plot(t_audio, audio)
+plt.title('Time Domain Representation')
+plt.xlabel('Time (s)')
 plt.ylabel('Amplitude')
-plt.grid()
 
-
-# # Frequency domain
-plt.subplot(2, 1, 2)
-plt.plot(frequencies, np.abs(spectrum))
-plt.title('Frequency Domain')
-plt.xlabel('Frequency [Hz]')
+plt.subplot(212)
+plt.semilogy(freq_audio[:len(freq_audio)//2], np.abs(audio_fft[:len(audio_fft)//2]))
+plt.title('Frequency Domain Representation')
+plt.xlabel('Frequency (Hz)')
 plt.ylabel('Magnitude')
-plt.grid()
-
 plt.tight_layout()
 plt.show()
 
 
+###########################-PART-2-###############################
 
-### PART 2 ###
-import adi
+# Load audio file
+# path_to_file = './test_audio.wav'
+# fs_audio, audio = wavfile.read(path_to_file)
 
-# Print out ADI version and name
-print(adi.__version__)
-print(adi.name)
+# Modulation parameters
+fc = 4 * fs_audio  # Carrier frequency
+fs = 4 * fc  # New sampling rate
 
-# Default IP address
-sdr = adi.Pluto("ip:192.168.2.1")
+# Resample audio
+audio_resampled = resample_poly(audio, fs // fs_audio, 1)
+t = np.arange(len(audio_resampled)) / fs
 
-# Set sampling rate and read back
-sdr.sample_rate = int(1e6)
-print(sdr.sample_rate)
+# Generate carrier and modulated signals
+carrier = np.cos(2 * np.pi * fc * t)
+sc_mod = audio_resampled * carrier  # DSB-SC
+tc_mod = (audio_resampled + 1) * carrier  # DSB-TC
+
+# FFT calculations
+n = len(sc_mod)
+frequencies = np.fft.fftfreq(n, d=1/fs)[:n//2]
+sc_mod_fft = np.abs(np.fft.fft(sc_mod)[:n//2])
+tc_mod_fft = np.abs(np.fft.fft(tc_mod)[:n//2])
+
+# Time domain plot
+plt.figure(figsize=(12, 6))
+plt.subplot(2, 1, 1)
+plt.plot(t[:400], audio_resampled[:400], label='Baseband Audio')
+plt.plot(t[:400], sc_mod[:400], label='DSB-SC', alpha=0.7)
+plt.plot(t[:400], tc_mod[:400], label='DSB-TC', alpha=1.0)
+plt.title('First 400 Samples Comparison')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
+plt.legend()
+
+# Frequency domain plot
+plt.subplot(2, 1, 2)
+plt.plot(frequencies, sc_mod_fft, label='DSB-SC')
+plt.plot(frequencies, tc_mod_fft, '--', label='DSB-TC')
+plt.title('Full Spectrum Analysis')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Magnitude')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Zoomed spectrum analysis
+plt.figure(figsize=(12, 4))
+plt.plot(frequencies, sc_mod_fft, label='DSB-SC')
+plt.plot(frequencies, tc_mod_fft, '--', label='DSB-TC')
+plt.xlim(fc-2000, fc+2000)  # Zoom around carrier frequency
+plt.title('Spectrum Around Carrier Frequency (Zoomed)')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Magnitude')
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+#############################-PART-3-############################
+# Demodulate using synchronized carrier
+phase_offset = 0
+carrier_rx = np.cos(2 * np.pi * fc * t + phase_offset)
+
+# Apply low-pass filter to remove high-frequency components
+b, a = butter(15, Wn = fs_audio, btype = 'low', fs = fs)
+
+# Demod DSB-SC
+sc_demod = sc_mod * carrier_rx  # Demodulate by multiplying with carrier
+sc_demod_filt = filtfilt(b, a, sc_demod)  # Apply lowpass filter
+sc_demod_filt_fft = np.fft.fft(sc_demod_filt)[:len(frequencies)]
+
+# Demod DSB-TC
+# tc_mod = (audio_resampled + 1) * carrier
+tc_demod = np.abs(tc_mod)  # Rectify the received signal
+tc_demod_filt = filtfilt(b, a, tc_demod)  # Apply lowpass filter
+tc_demod_filt_fft = np.fft.fft(tc_demod_filt)[:len(frequencies)]
+
+ind_start = 400 
+ind_end = 2000 
+
+plt.figure(figsize=(12, 6))
+plt.subplot(2, 1, 1)
+plt.title('Original Demodulated Signal')
+plt.plot(t[ind_start:ind_end], audio_resampled[ind_start:ind_end], label='Audio') 
+plt.plot(t[ind_start:ind_end], sc_demod_filt[ind_start:ind_end], label='DSB-SC')
+plt.plot(t[ind_start:ind_end], tc_demod_filt[ind_start:ind_end], label='DSB-TC')
+plt.legend() 
+plt.xlabel('Samples')
+plt.ylabel('Amplitude')
+
+plt.subplot(2, 1, 2) 
+plt.title('Original Demodulated Freq')
+plt.plot(frequencies, np.abs(sc_demod_filt_fft))
+plt.plot(frequencies, np.abs(tc_demod_filt_fft))
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Magnitude')
+plt.tight_layout()
+plt.show()
+
+# Playback the demodulated audio signal
+# sc_demod_resampled = resample_poly(sc_demod_filt, 1, fs // fs_audio)
+# sd.play(sc_demod_resampled.astype(np.float32), fs_audio)
+# sd.wait() # Wait until the audio finishes playing 
+
+# tc_demod_resampled = resample_poly(tc_demod_filt, 1, fs // fs_audio)
+# sd.play(tc_demod_resampled.astype(np.float32), fs_audio)
+# sd.wait() # Wait until the audio finishes playing
+
+# Test with phase offset = π/2
+phase_offset_pi2 = np.pi/2
+carrier_rx_pi2 = np.cos(2 * np.pi * fc * t + phase_offset_pi2)
+
+# Demod with phase offset
+sc_demod_pi2 = sc_mod * carrier_rx_pi2
+sc_demod_filt_pi2 = filtfilt(b, a, sc_demod_pi2)
+sc_demod_filt_pi2_fft = np.abs(np.fft.fft(sc_demod_filt_pi2)[:len(frequencies)])
+
+tc_demod_pi2 = np.abs(tc_mod) # rectified by abs|s(t)|
+tc_demod_filt_pi2 = filtfilt(b, a, tc_demod_pi2)
+tc_demod_filt_pi2_fft = np.abs(np.fft.fft(tc_demod_filt_pi2)[:len(frequencies)])
+
+# Plot both cases
+plt.figure(figsize=(12, 6))
+plt.subplot(2, 1, 1)
+plt.title('Pi/2 PhaseOffset Demodulated Signal')
+plt.plot(t[ind_start:ind_end], sc_demod_filt_pi2[ind_start:ind_end], label='DSB-SC (π/2)')
+plt.plot(t[ind_start:ind_end], tc_demod_filt_pi2[ind_start:ind_end], label='DSB-TC (π/2)')
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.title('Pi/2 PhaseOffset Demodulated Freq')
+plt.plot(frequencies, sc_demod_filt_pi2_fft, label='DSB-SC (π/2)')
+plt.plot(frequencies, tc_demod_filt_pi2_fft, '--', label='DSB-TC (π/2)')
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Magnitude')
+plt.legend()
+plt.tight_layout()
+plt.show()
