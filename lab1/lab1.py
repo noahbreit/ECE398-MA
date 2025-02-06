@@ -39,6 +39,7 @@ plt.title('Frequency Domain Representation')
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Magnitude')
 plt.tight_layout()
+plt.savefig("lab1_part1.png")
 plt.show()
 
 
@@ -87,6 +88,7 @@ plt.xlabel('Frequency (Hz)')
 plt.ylabel('Magnitude')
 plt.legend()
 plt.tight_layout()
+plt.savefig("lab1_part2a.png")
 plt.show()
 
 # Zoomed spectrum analysis
@@ -100,6 +102,7 @@ plt.ylabel('Magnitude')
 plt.grid(True)
 plt.legend()
 plt.tight_layout()
+plt.savefig("lab1_part2b.png")
 plt.show()
 
 #############################-PART-3-############################
@@ -141,16 +144,21 @@ plt.plot(frequencies, np.abs(tc_demod_filt_fft))
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Magnitude')
 plt.tight_layout()
+plt.savefig("lab1_part3a.png")
 plt.show()
 
 # Playback the demodulated audio signal
-# sc_demod_resampled = resample_poly(sc_demod_filt, 1, fs // fs_audio)
+sc_demod_resampled = resample_poly(sc_demod_filt, 1, fs // fs_audio)
 # sd.play(sc_demod_resampled.astype(np.float32), fs_audio)
 # sd.wait() # Wait until the audio finishes playing 
 
-# tc_demod_resampled = resample_poly(tc_demod_filt, 1, fs // fs_audio)
+tc_demod_resampled = resample_poly(tc_demod_filt, 1, fs // fs_audio)
 # sd.play(tc_demod_resampled.astype(np.float32), fs_audio)
 # sd.wait() # Wait until the audio finishes playing
+
+# Create or modify wav content
+wavfile.write('sc_demod_resampled.wav', int(fs_audio), sc_demod_resampled.astype(np.float32))
+wavfile.write('tc_demod_resampled.wav', int(fs_audio), tc_demod_resampled.astype(np.float32))
 
 # Test with phase offset = π/2
 phase_offset_pi2 = np.pi/2
@@ -183,4 +191,26 @@ plt.xlabel('Frequency (Hz)')
 plt.ylabel('Magnitude')
 plt.legend()
 plt.tight_layout()
+plt.savefig("lab1_part3b.png")
 plt.show()
+
+# Playback the demodulated audio signal
+sc_demod_pi2_resampled = resample_poly(sc_demod_filt_pi2, 1, fs // fs_audio)
+# sd.play(sc_demod_resampled.astype(np.float32), fs_audio)
+# sd.wait() # Wait until the audio finishes playing 
+
+tc_demod_pi2_resampled = resample_poly(tc_demod_filt_pi2, 1, fs // fs_audio)
+# sd.play(tc_demod_resampled.astype(np.float32), fs_audio)
+# sd.wait() # Wait until the audio finishes playing
+
+# Create or modify wav content
+wavfile.write('sc_demod_pi2_resampled.wav', int(fs_audio), sc_demod_pi2_resampled.astype(np.float32))
+wavfile.write('tc_demod_pi2_resampled.wav', int(fs_audio), tc_demod_pi2_resampled.astype(np.float32))
+
+### NOTES ###
+''' I have outputted both DSB-SC and DSB-TC demodulated audio samples and I can hear no difference between them
+    when the carrier freq and demodulating freq are exactly equivalent and in-phase.
+
+    This is not true when these frequencies are out-of-phase. DSB-SC is silent when the PhaseOffset is pi/2.
+    So... Clearly DSB-TC is more robust when compared to DSB-TC, but DSB-TC requires additional power+complexity
+    to transmit the carrier frequency'''
