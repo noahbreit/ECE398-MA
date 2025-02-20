@@ -45,10 +45,6 @@ plt.show()
 
 ###########################-PART-2-###############################
 
-# Load audio file
-# path_to_file = './test_audio.wav'
-# fs_audio, audio = wavfile.read(path_to_file)
-
 # Modulation parameters
 fc = 4 * fs_audio  # Carrier frequency
 fs = 4 * fc  # New sampling rate
@@ -108,6 +104,7 @@ plt.savefig("lab1_part2b.png")
 plt.show()
 
 #############################-PART-3-############################
+
 # Demodulate using synchronized carrier
 phase_offset = 0
 carrier_rx = np.cos(2 * np.pi * fc * t + phase_offset)
