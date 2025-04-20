@@ -12,8 +12,8 @@ t = np.linspace(0, Tb, N, endpoint=False)
 def generate_2fsk_signal(syms, fc, delta_f):
     signal = []
     for sym in syms:
-        f = fc + (2*sym - 1)*delta_f/2  # Calculate frequency
-        s = np.sqrt(2)*np.cos(2*np.pi*f*t)
+        f = fc + (2 * sym - 1) * delta_f / 2  # Choose f0 or f1
+        s = np.sqrt(2/Tb)*np.cos(2*np.pi*f*t)
         signal.extend(s)
     return np.array(signal)
 
@@ -23,18 +23,20 @@ phi0 = generate_2fsk_signal([0], fc, delta_f)
 phi1 = generate_2fsk_signal([1], fc, delta_f)
 
 # matplotlib time domain plot
-plt.figure(figsize=(12, 6))
-plt.subplot(1, 2, 1)
+plt.figure()
 plt.plot(t[:100], phi0[:100], label='Phi_0 (0)')
 plt.plot(t[:100], phi1[:100], label='Phi_1 (1)')
 plt.title('First 100 Samples')
 plt.xlabel('Time (s)')
 plt.ylabel('Amplitude')
 plt.legend()
+plt.savefig('phi_time_domain.png')
 plt.grid()
+plt.tight_layout()
+plt.show()
 
 # matplotlib freq domain plot
-plt.subplot(1, 2, 2)
+plt.figure()
 for sig, label in [(phi0, 'Phi_0'), (phi1, 'Phi_1')]:
     fft_result = np.fft.fftshift(np.fft.fft(sig))
     freq = np.fft.fftshift(np.fft.fftfreq(len(sig), 1/fs))
@@ -47,6 +49,7 @@ plt.ylabel('Magnitude')
 plt.legend()
 plt.grid()
 plt.tight_layout()
+plt.savefig('phi_freq_domain.png')
 plt.show()
 
 
@@ -69,10 +72,17 @@ def coherent_detection_2fsk(rx_signal, fc, delta_f, theta):
     syms = np.array([])     # recoered symbols (0 or 1)
 
     # create two orthonormal basis
-    f0 = fc - delta_f/2
-    f1 = fc + delta_f/2
-    phi0 = np.sqrt(2)*np.cos(2*np.pi*f0*t + theta[0])
-    phi1 = np.sqrt(2)*np.cos(2*np.pi*f1*t + theta[1])
+
+    # the original transmitted symbol points (each is a 2-dim vector)
+    s0 = np.array([1, 0])
+    s1 = np.array([0, 1])
+
+    # create two orthonormal basis with the phase offsets 
+    # (theta[0] for phi0, theta[1] for pho1)
+    # phi0_theta = phi0 * np.exp(2*np.pi*theta[0])
+    # phi1_theta = phi1 * np.exp(2*np.pi*theta[1])
+    phi0_theta = np.sqrt(2/Tb)*np.cos(2*np.pi*(fc - delta_f/2)*t + theta[0])
+    phi1_theta = np.sqrt(2/Tb)*np.cos(2*np.pi*(fc + delta_f/2)*t + theta[1])
 
     for i in range(0, len(rx_signal), N):
         # received signal in Tb duration
@@ -80,23 +90,55 @@ def coherent_detection_2fsk(rx_signal, fc, delta_f, theta):
         # if len(segment) < N: continue
         
         # compute the y vector coefficients
-        y0 = np.dot(segment, phi0)/fs
-        y1 = np.dot(segment, phi1)/fs
+        y0 = np.dot(segment, phi0_theta)/fs
+        y1 = np.dot(segment, phi1_theta)/fs
 
         y = np.array([y0, y1])
         ys = np.vstack([ys, y])
         
         # make decisions by choosing the closest distance (use linalg.norm)
-        SYMBOL_ZERO = np.array([-1, 0])
-        SYMBOL_ONE = np.array([1, 0])
-        decision = np.argmin([np.linalg.norm(y - SYMBOL_ZERO), np.linalg.norm(y - SYMBOL_ONE)])
+        decision = np.argmin([np.linalg.norm(y - s0), np.linalg.norm(y - s1)])
         syms = np.append(syms, decision)
     
     return ys, syms
 
 def noncoherent_detection_2fsk(rx_signal, fc, delta_f, theta):
-    # TODO
+    ys = np.empty((0,2))    # observation vectors
+    syms = np.array([])     # recoered symbols (0 or 1)
+
+    # create two orthonormal basis
+
+    # the original transmitted symbol points (each is a 2-dim vector)
+    s0 = np.array([1, 0])
+    s1 = np.array([0, 1])
+
+    # create two orthonormal basis (and its quadrature) with the phase offsets
+    # (theta[0] for phi0, theta[1] for phi1)
+    phi0_theta = np.sqrt(2/Tb)*np.cos(2*np.pi*(fc - delta_f/2)*t + theta[0])
+    phi0Q_theta = -1*np.sqrt(2/Tb)*np.sin(2*np.pi*(fc - delta_f/2)*t + theta[0])
+    phi1_theta = np.sqrt(2/Tb)*np.cos(2*np.pi*(fc + delta_f/2)*t + theta[1])
+    phi1Q_theta = -1*np.sqrt(2/Tb)*np.sin(2*np.pi*(fc + delta_f/2)*t + theta[1])
     
+    for i in range(0, len(rx_signal), N):
+        # received signal in Tb duration
+        segment = rx_signal[i:i+N]
+        
+        # Compute the y vector coefficients
+        y0_I = np.dot(segment, phi0_theta)/fs
+        y0_Q = np.dot(segment, phi0Q_theta)/fs
+        y1_I = np.dot(segment, phi1_theta)/fs
+        y1_Q = np.dot(segment, phi1Q_theta)/fs
+
+        y0 = np.sqrt(y0_I**2 + y0_Q**2)
+        y1 = np.sqrt(y1_I**2 + y1_Q**2)
+
+        y = np.array([y0, y1])
+        ys = np.vstack([ys, y])
+        
+        # make decision by choosing the closest distance (use linalg.norm)
+        decision = np.argmin([np.linalg.norm(y - s0), np.linalg.norm(y - s1)])
+        syms = np.append(syms, decision) 
+
     return ys, syms
 
 # Phase offset experiment
@@ -108,11 +150,14 @@ thetas = [
     np.random.uniform(-np.pi, np.pi, 2)
 ]
 
-for theta in thetas:
+for idx, theta in enumerate(thetas):
     print(f"\nTheta: {theta}")
     y_coh, sym_coh = coherent_detection_2fsk(rx_signal, fc, delta_f, theta)
     y_noncoh, sym_noncoh = noncoherent_detection_2fsk(rx_signal, fc, delta_f, theta)
     
+    # DEBUG
+    # print(y_coh[:10])
+
     ser_coh = 100*np.mean(syms != sym_coh)
     ser_noncoh = 100*np.mean(syms != sym_noncoh)
 
@@ -134,11 +179,12 @@ for theta in thetas:
     plt.xlabel(r'$\mathrm{\phi_0(t)}$')
     plt.ylabel(r'$\mathrm{\phi_1(t)}$')
     plt.title('Constellation')
+    plt.savefig(f'phase_offset{idx}.png')
     plt.show()
 
 # Frequency separation impact
 delta_fs = [1.0/Tb, 1.0/(2*Tb), 10.5/Tb]
-for df in delta_fs:
+for idx, df in enumerate(delta_fs):
     signal = generate_2fsk_signal(syms, fc, df)
     noise = noise_amplutide * np.random.randn(len(signal))
     rx_signal = signal + noise
@@ -153,5 +199,5 @@ for df in delta_fs:
     plt.ylabel('Phi_1(t)')
     plt.grid()
     plt.axis('equal')
+    plt.savefig(f'freq_separation{idx}.png')
     plt.show()
-
