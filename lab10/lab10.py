@@ -57,7 +57,9 @@ bits = np.random.randint(0, 2, num_data_bits)  # Generate correct number of bits
 
 ############ YOUR CODE STARTS HERE ############
 # Create QAM symbols
-gray_code = [0,1,3,2,4,5,7,6,12,13,15,14,8,9,11,10]
+# gray_code = [0,1,3,2,4,5,7,6,12,13,15,14,8,9,11,10]
+gray_code = [0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8]  # Correct Gray order
+
 constellation = []
 for i in gray_code:
     row = (i // 4) - 1.5
@@ -65,10 +67,25 @@ for i in gray_code:
     constellation.append(col + 1j*row)
     
 # Normalize constellation (16-QAM normalization factor = 1/sqrt(10))
-constellation = np.array(constellation)/np.sqrt(10)
+# constellation = np.array(constellation)/np.sqrt(10)
+constellation = np.array(constellation) / np.sqrt(2.5)
 symbol_indices = np.packbits(bits.reshape(-1, bits_per_symbol), 
                            axis=1, bitorder='little').flatten()
 mqam_symbols = constellation[symbol_indices]
+
+# Create the IQ constellation
+plt.figure
+plt.subplot(1,2,1)
+plt.plot(mqam_symbols.real, mqam_symbols.imag, '.')
+plt.xlabel('I')
+plt.ylabel('Q')
+plt.title(str(Mary)+'-QAM symbols')
+plt.grid(True)
+plt.xlim([-1.2, 1.2])
+plt.ylim([-1.2, 1.2])
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+plt.show()
 
 # Create preamble (BPSK)
 barker = np.array([1,1,1,1,1,-1,-1,1,1,-1,1,-1,1])
@@ -76,7 +93,7 @@ barker = np.array([1,1,1,1,1,-1,-1,1,1,-1,1,-1,1])
 guard = np.zeros_like(barker) 
 frame = np.concatenate((barker, barker, guard, mqam_symbols))
 # Upsample and perform pulse-shaping here (the pulse is given)
-up_sym = np.zeros(len(frame)*sps)
+up_sym = np.zeros(len(frame)*sps, dtype=complex)
 up_sym[::sps] = frame  # Symbol-spaced upsampling
 # Tx_ADC is the pulse-shaped signal
 
@@ -111,10 +128,10 @@ h[0] = ch_att
 h = np.roll(h, np.random.randint(M*sps))    # random delay
 
 v = np.convolve(u, h) 
-noise_amplitude = 0.01
+noise_amplitude = 0.0 # REMOVE CHANNEL NOISE FOR THIS ASSIGNMENT
 noise = noise_amplitude * np.random.randn(len(v))   # AWGN
 
-v = v + noise
+v = v + noise 
 ############################################
 ## Simulate IQ demodulator (Rx)
 ############################################
@@ -145,6 +162,7 @@ for k in range(sps):
 
 # Find the best offset
 max_ind = np.argmax(energy)
+print("max_ind: ", max_ind)
 
 # Align samples using max_ind
 rx_aligned = rx_matched[max_ind::sps]
@@ -159,6 +177,18 @@ for n in range(len(corr)):
     corr[n] = np.abs(sum) / N
 
 frame_ind = np.argmax(corr)
+
+# Plot the correlation and its peak
+plt.figure
+plt.plot(corr)
+plt.plot(frame_ind, corr[frame_ind], 'x', label=f'frame_ind={frame_ind}')
+plt.title('self-reference correlation')
+plt.grid(True)
+plt.legend()
+# plt.savefig('assignment1a.png')
+# plt.savefig('assignment1d.png')
+# plt.savefig('assignment1g.png')
+plt.show()
 
 # Separate preamble and data symbols
 rx_preamble = rx_aligned[frame_ind:frame_ind+2*N]
@@ -183,18 +213,81 @@ rx_cfo_corrected = rx_aligned * np.exp(-1j*2*np.pi*cfo_hat*t_cfo)
 rx_preamble_CFOcor = rx_cfo_corrected[frame_ind:frame_ind+2*N]
 rx_data_CFOcor = rx_cfo_corrected[frame_ind+3*N:frame_ind+3*N+num_data_symbols]
 
+
+# Create the IQ constellation_
+plt.figure
+plt.subplot(1,2,1)
+plt.plot(rx_preamble.real, rx_preamble.imag, '.')
+plt.xlabel('I')
+plt.ylabel('Q')
+plt.title('Preamble sym Before CFO corr')
+plt.grid(True)
+plt.xlim([-1.2, 1.2])
+plt.ylim([-1.2, 1.2])
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+plt.subplot(1,2,2)
+plt.plot(rx_data.real, rx_data.imag, '.')
+plt.xlabel('I')
+plt.ylabel('Q')
+plt.title('Data sym Before CFO corr')
+plt.grid(True)
+plt.xlim([-1.2, 1.2])
+plt.ylim([-1.2, 1.2])
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+plt.show()
+
+# Create the IQ constellation_
+plt.figure
+plt.subplot(1,2,1)
+plt.plot(rx_preamble_CFOcor.real, rx_preamble_CFOcor.imag, '.')
+plt.xlabel('I')
+plt.ylabel('Q')
+plt.title('Preamble sym After CFO corr')
+plt.grid(True)
+plt.xlim([-1.2, 1.2])
+plt.ylim([-1.2, 1.2])
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+plt.subplot(1,2,2)
+plt.plot(rx_data_CFOcor.real, rx_data_CFOcor.imag, '.')
+plt.xlabel('I')
+plt.ylabel('Q')
+plt.title('Data sym After CFO corr')
+plt.grid(True)
+plt.xlim([-1.2, 1.2])
+plt.ylim([-1.2, 1.2])
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+plt.show()
+
 #################################
 # Recover the bits
 #################################
 def demodulate(symbols, constellation):
-    symbols = symbols * np.sqrt(10)  # Remove normalization
+    # Correct constellation scaling (sqrt(2.5) instead of sqrt(10))
+    # symbols = symbols * np.sqrt(2.5)
+    
+    # Calculate distances to constellation points
     distances = np.abs(symbols[:, np.newaxis] - constellation)
     symbol_indices = np.argmin(distances, axis=1)
-    return np.unpackbits(symbol_indices.astype(np.uint8).reshape(-1,1), 
-                       axis=1, bitorder='little')[:, -4:].flatten()
+    
+    # Convert indices to 4-bit binary using valid Gray code mapping
+    gray_mapped = [gray_code.index(idx) for idx in symbol_indices]
+    
+    # Convert to bits (4 bits per symbol)
+    bits = np.array([list(np.binary_repr(val, width=4)) for val in gray_mapped], dtype=int).flatten()
+    return bits
+
 
 # Use after channel correction
 demod_bits = demodulate(rx_data_CFOcor, constellation)
+
+# print("rx_data: ", rx_data)_
+print("first 16 bits...")
+print("original bits: ", bits[:16])
+print("rx_bits:       ", demod_bits[:16])
 
 # bit error calculation
 bit_err = np.sum(np.abs(bits - demod_bits))
